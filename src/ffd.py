@@ -3,44 +3,8 @@ import tensorflow as tf
 import math
 import layers
 
-def feed_forward_discriminator_logit(z, n_hidden,n_output, keep_prob, reuse=False):
-
-  with tf.variable_scope("ff_discriminator_logit",reuse=reuse):
-    w_init = tf.contrib.layers.variance_scaling_initializer()
-    b_init = tf.constant_initializer(0.0)
-
-    # 1st hidden layer
-    w0 = tf.get_variable('w0', [z.get_shape()[1], n_hidden], initializer=w_init)
-    b0 = tf.get_variable('b0', [n_hidden], initializer=b_init)
-    h0 = tf.matmul(z, w0) + b0
-    h0 = tf.nn.tanh(h0)
-    h0 = tf.nn.dropout(h0, keep_prob)
-
-    # 2nd hidden layer
-    w1 = tf.get_variable('w1', [h0.get_shape()[1], n_hidden], initializer=w_init)
-    b1 = tf.get_variable('b1', [n_hidden], initializer=b_init)
-    h1 = tf.matmul(h0, w1) + b1
-    h1 = tf.nn.tanh(h1)
-    h1 = tf.nn.dropout(h1, keep_prob)
-
-    # 2nd hidden layer
-    w2 = tf.get_variable('w2', [h1.get_shape()[1], n_hidden], initializer=w_init)
-    b2 = tf.get_variable('b2', [n_hidden], initializer=b_init)
-    h2 = tf.matmul(h1, w2) + b2
-    h2 = tf.nn.tanh(h2)
-    h2 = tf.nn.dropout(h2, keep_prob)
-
-    # output layer
-    # borrowed from https: // github.com / altosaar / vae / blob / master / vae.py
-    w_out = tf.get_variable('w_out', [h2.get_shape()[1], n_output], initializer=w_init)
-    b_out = tf.get_variable('b_out', [n_output], initializer=b_init)
-
-    output = tf.nn.sigmoid( tf.matmul(h2,w_out) + b_out )
-
-  return output
-
 #here, n_hidden is a list, where each entry makes a layer of that size
-def gen_ffd_logit(name, x, n_hidden, n_output, keep_prob, reuse=False):
+def gen_ffd_logit(name, x, n_hidden, n_output, keep_prob, reuse=False, return_logit=False):
 
   with tf.variable_scope("%s_gen_ffd_logit" % name, reuse=reuse):
 
@@ -67,10 +31,12 @@ def gen_ffd_logit(name, x, n_hidden, n_output, keep_prob, reuse=False):
       initializer=layers.INIT_W)
     b_out = tf.get_variable('b_out', [n_output], initializer=layers.INIT_B)
 
-    output = tf.nn.sigmoid( tf.matmul(h,w_out) + b_out )
+    output = tf.matmul(h,w_out) + b_out
+
+    if not return_logit:
+      output = tf.nn.sigmoid(output)
+
   return output
-
-
 
 
 def ffd(z, c, n_hidden, n_output, keep_prob, output_type=None,\
@@ -78,7 +44,10 @@ def ffd(z, c, n_hidden, n_output, keep_prob, output_type=None,\
 
   if logit :
     #c_hat = feed_forward_discriminator_logit(z,n_hidden,n_output,keep_prob, reuse)
-    c_hat = gen_ffd_logit(name, z,n_hidden,n_output,keep_prob, reuse)
+    if output_type == "bce":
+      c_hat = gen_ffd_logit(name, z,n_hidden,n_output,keep_prob, reuse, return_logit=True)
+    else:
+      c_hat = gen_ffd_logit(name, z,n_hidden,n_output,keep_prob, reuse)
   else:
     print("Non-logit c adv not implmented yet")
     exit(1)
@@ -98,6 +67,8 @@ def ffd(z, c, n_hidden, n_output, keep_prob, output_type=None,\
     loss = \
       tf.losses.mean_squared_error( labels=c, predictions=c_hat,\
         reduction=tf.losses.Reduction.MEAN)
+  elif output_type == "bce":
+    loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=c_hat, labels=c))
   else:
     raise("Bad output_type specified")
 

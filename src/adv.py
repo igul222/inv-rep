@@ -33,6 +33,10 @@ def parse_args():
   parser.add_argument('--baseline', default=False, action="store_true",
     help='switches into baseline mode')
 
+  parser.add_argument('--majority_class_baseline', default=False, action="store_true",
+    help=('if baseline flag is give, runs the "majority class" baseline (z=0) '+
+    'instead of the other one (z=x)'))
+
   parser.add_argument('--save_freq', type=int,default=5,
     help='how often should we save parameters to file? (in epochs)')
   parser.add_argument('--save_freq_adv', type=int,default=5,
@@ -68,6 +72,8 @@ def parse_args():
   parser.add_argument('--num_epochs', type=int, default=20, help='The number of epochs to run')
 
   parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
+
+  parser.add_argument('--keep_prob', type=float, default=0.9, help='Dropout keep_prob')
 
   return check_args(parser.parse_args())
 
@@ -109,7 +115,13 @@ def check_args(args):
 
 def main(args):
 
-  if args.c_type == "zero_one":
+  if args.c_type == "bce_train_abs_eval":
+    error_func = error_utils.zero_one_abs
+    ffd_output_type = "bce"
+  elif args.c_type == "bce_train_acc_eval":
+    error_func = error_utils.zero_one_thold
+    ffd_output_type = "bce"
+  elif args.c_type == "zero_one":
     error_func = error_utils.zero_one_abs
     ffd_output_type = "zero_one"
   elif args.c_type == "softmax":
@@ -149,6 +161,11 @@ def main(args):
       train_c = train_total_data[:,split_numbers[1]:]
 
       dim_z = split_numbers[0]
+
+      if args.majority_class_baseline:
+        train_z *= 0.
+        val_z *= 0.
+        test_z *= 0.
 
     else:
       filename = args.latent_and_label_data_path +\
@@ -221,7 +238,7 @@ def main(args):
 
       if(args.restart_epoch < 0):
         start_epoch = 0
-        sess.run(tf.global_variables_initializer(), feed_dict={keep_prob : 0.9})
+        sess.run(tf.global_variables_initializer(), feed_dict={keep_prob : args.keep_prob})
       else:
         raise("restart epoch removed")
 
@@ -245,22 +262,22 @@ def main(args):
 
           _, tot_loss0 =\
             sess.run( (train_op0, loss0),\
-              feed_dict={ z_in: batch_z, c_in: batch_c, keep_prob : 0.9 }
+              feed_dict={ z_in: batch_z, c_in: batch_c, keep_prob : args.keep_prob }
             )
 
           _, tot_loss1 =\
             sess.run( (train_op1, loss1),\
-              feed_dict={ z_in: batch_z, c_in: batch_c, keep_prob : 0.9 }
+              feed_dict={ z_in: batch_z, c_in: batch_c, keep_prob : args.keep_prob }
             )
 
           _, tot_loss2 =\
             sess.run( (train_op2, loss2),\
-              feed_dict={ z_in: batch_z, c_in: batch_c, keep_prob : 0.9 }
+              feed_dict={ z_in: batch_z, c_in: batch_c, keep_prob : args.keep_prob }
             )
 
           _, tot_loss3 =\
             sess.run( (train_op3, loss3),\
-              feed_dict={ z_in: batch_z, c_in: batch_c, keep_prob : 0.9 }
+              feed_dict={ z_in: batch_z, c_in: batch_c, keep_prob : args.keep_prob }
             )
 
         print("[adv] target_epoch %d epoch %d: L0 %03.2f L1 %03.2f L2 %03.2f L3 %03.2f" %\
